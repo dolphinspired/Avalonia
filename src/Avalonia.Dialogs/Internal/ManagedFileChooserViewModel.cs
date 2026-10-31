@@ -221,39 +221,39 @@ namespace Avalonia.Dialogs.Internal
                     }
                     else
                     {
-                        if (!_options.AllowDirectorySelection)
-                        {
-                            var invalidItems = SelectedItems.Where(i => i.ItemType == ManagedFileChooserItemType.Folder)
-                                .ToList();
-                            foreach (var item in invalidItems)
-                                SelectedItems.Remove(item);
-                        }
+                        // Folders stay selected so OK can open them, but they never name the result.
+                        var results = SelectedItems.Where(IsResult).ToList();
 
                         if (!_selectingDirectory)
                         {
-                            if (SelectedItems.Count > 1)
+                            if (results.Count > 1)
                             {
                                 var sb = StringBuilderCache.Acquire();
 
-                                for (var i = 0; i < SelectedItems.Count; i++)
+                                for (var i = 0; i < results.Count; i++)
                                 {
-                                    var item = SelectedItems[i];
+                                    var item = results[i];
                                     sb.Append('"');
                                     sb.Append(item.DisplayName);
                                     sb.Append('"');
-                                    if (i + 1 < SelectedItems.Count)
+                                    if (i + 1 < results.Count)
                                     {
                                         sb.Append(' ');
                                     }
                                 }
 
                                 FileName = sb.ToString();
-                                
+
                                 StringBuilderCache.Release(sb);
                             }
-                            else
+                            else if (results.Count == 1)
                             {
-                                FileName = SelectedItems.FirstOrDefault()?.DisplayName;
+                                FileName = results[0].DisplayName;
+                            }
+                            // A save keeps the typed name while browsing folders.
+                            else if (SelectedItems.Count == 0 && !_savingFile)
+                            {
+                                FileName = null;
                             }
                         }
                     }
@@ -402,6 +402,11 @@ namespace Avalonia.Dialogs.Internal
             {
                 CompleteRequested?.Invoke(new[] { Location! });
             }
+            else if (SelectedItems.Count == 1 && !IsResult(SelectedItems[0]))
+            {
+                // Like a double-click, OK on a single folder opens it.
+                Navigate(SelectedItems[0].Path);
+            }
             else if (_savingFile)
             {
                 if (!string.IsNullOrWhiteSpace(FileName))
@@ -425,9 +430,18 @@ namespace Avalonia.Dialogs.Internal
             }
             else
             {
-                CompleteRequested?.Invoke(SelectedItems.Select(i => i.Path!).ToArray());
+                var results = SelectedItems.Where(IsResult).Select(i => i.Path!).ToArray();
+
+                if (results.Length > 0)
+                {
+                    CompleteRequested?.Invoke(results);
+                }
             }
         }
+
+        // Any item is a result if directory selection is allowed. Otherwise, only files are considered results.
+        private bool IsResult(ManagedFileChooserItemViewModel item) =>
+            _options.AllowDirectorySelection || item.ItemType == ManagedFileChooserItemType.File;
 
         public void SelectSingleFile(ManagedFileChooserItemViewModel item)
         {
